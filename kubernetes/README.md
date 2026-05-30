@@ -177,10 +177,6 @@ Desplegué el Dashboard oficial para:
 
 Para obtener métricas en tiempo real instalé Metrics Server:
 
-```bash
-kubectl apply -f metrics-server.yaml
-```
-
 Una vez desplegado fue posible consultar el consumo real de recursos del clúster:
 
 ```bash
@@ -274,12 +270,16 @@ Aunque el consumo real era bajo, el Scheduler bloqueaba la reubicación del Pod 
 
 ## ✅ Solución
 
-Eliminé el `LimitRange` y definí requests acordes al consumo real observado:
+Eliminé el `LimitRange` y definí requests acordes al consumo real observado en los contenedores:
 
 ```yaml
-resources:
-  requests:
-    cpu: "150m"
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "400m"
+      memory: "256Mi"
 ```
 
 Resultado:
@@ -291,7 +291,7 @@ Resultado:
 
 ---
 
-# ⚠️ Problema #2 — Bloqueo del Volumen (Split-Brain)
+# ⚠️ Problema #2 — Bloqueo del Volumen
 
 ## 🐛 Síntoma
 
@@ -345,9 +345,7 @@ Resultado:
 
 Visualización del estado saludable de nodos y workloads.
 
-<img src="img/dashboard_kubernetes.png" alt="dashboard kubernetes" width="100%">
-<img src="img/dashboard_workloads1.png" alt="dashboard workloads" width="100%">
-<img src="img/dashboard_workloads2.png" alt="dashboard workloads" width="100%">
+<img src="img/logo.png" alt="Logo" width="300">
 
 ---
 
