@@ -10,6 +10,7 @@ El objetivo fue diseñar un **Home Lab Bare-Metal** capaz de tolerar fallos fís
 * Seguridad desacoplada de Git.
 * Red virtual avanzada.
 * Persistencia resiliente.
+* Observabilidad y monitorización del clúster.
 
 ---
 
@@ -26,6 +27,7 @@ El objetivo fue diseñar un **Home Lab Bare-Metal** capaz de tolerar fallos fís
 * Calico (Tigera Operator)
 * Nginx Ingress Controller
 * Kubernetes Dashboard
+* Metrics Server
 
 ---
 
@@ -157,7 +159,7 @@ Longhorn:
 
 ---
 
-# 📊 Monitorización del Clúster
+# 📊 Monitorización y Observabilidad
 
 # 4️⃣ Kubernetes Dashboard
 
@@ -168,6 +170,34 @@ Desplegué el Dashboard oficial para:
 * Monitorizar estado de nodos.
 * Validar failovers.
 * Gestionar workloads visualmente.
+
+---
+
+# 5️⃣ Metrics Server
+
+Para obtener métricas en tiempo real instalé Metrics Server:
+
+```bash
+kubectl apply -f metrics-server.yaml
+```
+
+Una vez desplegado fue posible consultar el consumo real de recursos del clúster:
+
+```bash
+kubectl top nodes
+```
+
+```bash
+kubectl top pods -A
+```
+
+Metrics Server fue clave para:
+
+* Analizar consumo real de CPU y memoria.
+* Diagnosticar problemas de scheduling.
+* Detectar configuraciones incorrectas de recursos.
+* Validar el comportamiento de los Pods durante failovers.
+* Correlacionar eventos del Scheduler con el uso efectivo del clúster.
 
 ---
 
@@ -189,13 +219,29 @@ Mostrando:
 Insufficient cpu
 ```
 
-Aunque las VMs tenían recursos disponibles.
+Aunque las VMs parecían tener recursos disponibles.
+
+---
+
+## 🔍 Investigación
+
+Utilizando Metrics Server pude comprobar el consumo real del clúster:
+
+```bash
+kubectl top nodes
+```
+
+```bash
+kubectl top pods -A
+```
+
+Las métricas indicaban que el uso real de CPU era relativamente bajo, por lo que el problema no estaba relacionado con falta de capacidad física.
 
 ---
 
 ## 🔍 Causa
 
-Existía un `LimitRange` olvidado en el namespace.
+Tras revisar la configuración descubrí que existía un `LimitRange` heredado de pruebas anteriores.
 
 Cada contenedor reservaba automáticamente:
 
@@ -203,30 +249,32 @@ Cada contenedor reservaba automáticamente:
 500m CPU
 ```
 
-Como Laravel usa Sidecar:
+Como Laravel utiliza un patrón Sidecar:
 
 * PHP-FPM
 * Nginx
 
-La reserva total era:
+La reserva efectiva por Pod era:
 
 ```txt
 1000m CPU
 ```
 
-Kubernetes calculaba además:
+Kubernetes calculaba además los recursos reservados por:
 
 * Calico
 * Longhorn
+* Metrics Server
+* Dashboard
 * System Pods
 
-Y bloqueaba el scheduling preventivamente.
+Aunque el consumo real era bajo, el Scheduler bloqueaba la reubicación del Pod tras la caída de un nodo porque las reservas comprometidas superaban la capacidad disponible.
 
 ---
 
 ## ✅ Solución
 
-Eliminé el `LimitRange` y definí requests reales:
+Eliminé el `LimitRange` y definí requests acordes al consumo real observado:
 
 ```yaml
 resources:
@@ -237,8 +285,9 @@ resources:
 Resultado:
 
 * MySQL volvió a desplegarse inmediatamente.
-* Mejor aprovechamiento del clúster.
+* Mejor aprovechamiento de recursos.
 * Failover funcional.
+* Requests ajustados a métricas reales.
 
 ---
 
@@ -248,24 +297,24 @@ Resultado:
 
 Al apagar violentamente la VM de almacenamiento:
 
-* El PVC quedó congelado ~5 minutos.
+* El PVC quedó congelado durante varios minutos.
 * MySQL dejó de responder temporalmente.
 
 ---
 
 ## 🔍 Causa
 
-Longhorn protege automáticamente contra:
+Longhorn protege automáticamente contra escenarios de:
 
 # Split-Brain
 
-Evita escritura simultánea sobre réplicas inconsistentes.
+Evita que múltiples réplicas inconsistentes acepten escrituras simultáneamente tras una pérdida abrupta de conectividad.
 
 ---
 
 ## ✅ Solución
 
-Forcé el desalojo del nodo y recreación inmediata:
+Forcé el desalojo del nodo y la recreación inmediata del Pod:
 
 ```bash
 kubectl drain slave1-ubuntu-kubernetes \
@@ -282,9 +331,9 @@ kubectl delete pod mysql-0 \
 
 Resultado:
 
-* Failover < 30 segundos.
+* Failover inferior a 30 segundos.
 * Sin pérdida de datos.
-* Recuperación automática al volver el nodo.
+* Recuperación automática al reincorporar el nodo.
 
 ---
 
@@ -294,19 +343,19 @@ Resultado:
 
 ## Kubernetes Dashboard
 
-Visualización del estado saludable de nodos y workloads:
+Visualización del estado saludable de nodos y workloads.
 
 ---
 
 ## Longhorn UI — Estado Healthy
 
-Volumen de MySQL correctamente replicado:
+Volumen de MySQL correctamente replicado entre nodos.
 
 ---
 
 ## Laravel funcionando
 
-Aplicación desplegada mediante Ingress Controller:
+Aplicación desplegada mediante Ingress Controller.
 
 ---
 
@@ -314,19 +363,19 @@ Aplicación desplegada mediante Ingress Controller:
 
 ## 🔄 Migración Automática del Pod MySQL
 
-Failover del StatefulSet al apagar un nodo:
+Failover del StatefulSet tras apagar un nodo.
 
 ---
 
 ## 🟡 Longhorn en modo Degraded
 
-El sistema mantiene disponibilidad incluso tras la caída de una VM:
+El sistema mantiene disponibilidad incluso durante la caída de una VM.
 
 ---
 
 ## ♻️ Recuperación Automática
 
-Resincronización automática tras volver el nodo:
+Resincronización automática de réplicas tras la recuperación del nodo.
 
 ---
 
@@ -378,5 +427,7 @@ Este Home Lab me permitió replicar conceptos reales de infraestructura cloud:
 * Seguridad desacoplada.
 * Failover resiliente.
 * Redes internas complejas.
+* Observabilidad mediante Metrics Server y Kubernetes Dashboard.
+* Diagnóstico y resolución de problemas reales de operación.
 
-Todo ejecutándose sobre hardware local y máquinas virtuales propias.
+Todo ejecutándose sobre hardware local y máquinas virtuales propias, reproduciendo patrones y desafíos habituales en entornos productivos basados en Kubernetes.
