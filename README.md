@@ -357,13 +357,15 @@ Volumen de MySQL correctamente replicado entre nodos.
 
 <img src="img/dashboard_longhorn.png" alt="dashboard longhorn" width="100%">
 <img src="img/dashboard_longhorn_volume_nodes.png" alt="dashboard volume nodes" width="100%">
-<img src="img/dashboard_longhorn_nodes.png" alt="dashboard longhorn nodes" width="100%">
+<img src="img/dashboard_longorn_nodes.png" alt="dashboard longhorn nodes" width="100%">
 
 ---
 
 ## Laravel funcionando
 
 Aplicación desplegada mediante Ingress Controller.
+
+<img src="img/laravel_app.png" alt="laravel app" width="100%">
 
 ---
 
