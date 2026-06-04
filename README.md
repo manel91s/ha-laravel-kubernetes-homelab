@@ -336,7 +336,7 @@ Volumen de MySQL correctamente replicado entre nodos.
 
 <img src="img/dashboard_longhorn.png" alt="dashboard longhorn" width="100%">
 
-<img src="img/dashboard_longhorn_volume_nodess.png" alt="dashboard volume nodes" width="100%">
+<img src="img/dashboard_longhorn_volume_nodes.png" alt="dashboard volume nodes" width="100%">
 
 <img src="img/dashboard_longhorn_nodes.png" alt="dashboard longhorn nodes" width="100%">
 
