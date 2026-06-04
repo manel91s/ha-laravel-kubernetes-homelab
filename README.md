@@ -1,16 +1,18 @@
-# 🚀 Clúster de Alta Disponibilidad — Laravel + MySQL sobre Máquinas Virtuales (HomeLab Cloud)
+# 🚀 Clúster de Alta Disponibilidad — Laravel + MySQL sobre Máquinas Virtuales (Home Lab Cloud)
 
-Este proyecto documenta cómo construí un entorno altamente disponible utilizando **Laravel**, **MySQL** y **Kubernetes** sobre mis propias máquinas virtuales locales, simulando la arquitectura de un proveedor cloud como AWS o Google Cloud.
+Este proyecto documenta cómo construí un entorno altamente disponible utilizando **Laravel**, **MySQL** y **Kubernetes** sobre máquinas virtuales propias, replicando conceptos y patrones habituales de infraestructuras cloud modernas.
 
-El objetivo fue diseñar un **Home Lab Bare-Metal** capaz de tolerar fallos físicos reales, incluyendo:
+El objetivo era entender qué ocurre detrás de las capas de abstracción que ofrecen proveedores como AWS o Google Cloud, construyendo un clúster Kubernetes "bare metal" donde pudiera gestionar directamente aspectos como la red, el almacenamiento, la persistencia y la recuperación ante fallos.
+
+El laboratorio fue diseñado para tolerar fallos físicos reales y poner a prueba escenarios habituales de operación:
 
 * Alta disponibilidad de aplicaciones.
 * Almacenamiento distribuido.
-* Failover automático/manual.
-* Seguridad desacoplada de Git.
-* Red virtual avanzada.
+* Failover automático y manual.
+* Seguridad desacoplada del código fuente.
+* Networking interno del clúster.
 * Persistencia resiliente.
-* Observabilidad y monitorización del clúster.
+* Observabilidad y monitorización.
 
 ---
 
@@ -33,18 +35,18 @@ El objetivo fue diseñar un **Home Lab Bare-Metal** capaz de tolerar fallos fís
 
 # 🔌 Infraestructura de Red, Seguridad y Almacenamiento
 
-# 1️⃣ Red con Calico + DNS Casero
+## 1️⃣ Red con Calico y DNS Local
 
-## 📡 CNI: Calico mediante Tigera Operator
+### 📡 CNI: Calico mediante Tigera Operator
 
-Instalé Calico aplicando los manifiestos oficiales:
+Instalé Calico utilizando los manifiestos oficiales:
 
 ```bash
 kubectl apply -f tigera-operator.yaml
 kubectl apply -f custom-resources.yaml
 ```
 
-Posteriormente edité el recurso personalizado para definir manualmente el CIDR del clúster:
+Posteriormente edité el recurso personalizado para definir manualmente el CIDR utilizado por el clúster:
 
 ```yaml
 cidr: 192.168.0.0/16
@@ -52,15 +54,13 @@ cidr: 192.168.0.0/16
 
 Esto permitió:
 
-* Coordinar las IPs de Pods y nodos.
-* Mantener consistencia de red.
-* Garantizar replicación distribuida estable.
+* Gestionar de forma consistente las direcciones IP de Pods y nodos.
+* Mantener una topología de red predecible.
+* Garantizar la comunicación entre workloads distribuidos.
 
----
+### 🌐 DNS Local mediante `/etc/hosts`
 
-## 🌐 DNS Local mediante `/etc/hosts`
-
-Para evitar depender de DNS públicos configuré dominios locales apuntando directamente al Ingress del clúster:
+Para evitar depender de servicios DNS externos durante las pruebas, configuré resoluciones locales apuntando al Ingress Controller del clúster:
 
 ```txt
 192.168.X.X laravel.app.com
@@ -69,22 +69,13 @@ Para evitar depender de DNS públicos configuré dominios locales apuntando dire
 
 ---
 
-# 🔐 Seguridad Avanzada
+## 2️⃣ Seguridad mediante ConfigMaps y Secrets
 
-# 2️⃣ ConfigMaps y Secrets desacoplados de Git
+Para evitar almacenar información sensible en el repositorio, separé completamente la configuración pública de las credenciales privadas.
 
-Separé completamente:
+### 📦 ConfigMap de Aplicación
 
-* Configuración pública.
-* Credenciales privadas.
-
-De esta forma ninguna credencial sensible queda almacenada en GitHub.
-
----
-
-## 📦 ConfigMap de Aplicación
-
-Variables públicas compartidas:
+Variables compartidas entre los distintos Pods:
 
 ```yaml
 DB_HOST=mysql
@@ -93,22 +84,18 @@ DB_DATABASE=laravel
 APP_URL=http://laravel.app.com
 ```
 
----
+### 🔑 Secret para la Base de Datos
 
-## 🔑 Secret de Base de Datos
-
-Generado directamente desde CLI:
+Creado directamente desde línea de comandos:
 
 ```bash
 kubectl create secret generic app-secrets \
   --from-literal=DB_PASSWORD='tu_password_secreto'
 ```
 
----
+### 🐳 Secret para GitHub Container Registry (GHCR)
 
-## 🐳 Secret para GitHub Container Registry (GHCR)
-
-Como las imágenes Docker de Laravel son privadas:
+Las imágenes Docker de Laravel se almacenan en un registro privado:
 
 ```bash
 kubectl create secret docker-registry github-registry-secret \
@@ -118,13 +105,11 @@ kubectl create secret docker-registry github-registry-secret \
   --docker-email='email'
 ```
 
-Esto permite que Kubernetes descargue imágenes privadas de forma segura.
+Esto permite que Kubernetes descargue imágenes privadas sin exponer credenciales en Git.
 
----
+### 🔒 Protección de Longhorn mediante Basic Auth
 
-## 🔒 Basic Auth para Longhorn
-
-Protección de la interfaz web:
+Para restringir el acceso a la interfaz web de Longhorn:
 
 ```bash
 htpasswd -c auth admin
@@ -138,11 +123,13 @@ kubectl create secret generic longhorn-auth-secret \
 
 ---
 
-# 💾 Almacenamiento Distribuido con Longhorn
+## 3️⃣ Almacenamiento Distribuido con Longhorn
 
-# 3️⃣ Persistencia tipo Cloud (EBS-like)
+### 💾 Persistencia inspirada en entornos Cloud
 
-Implementé Longhorn para simular discos distribuidos similares a AWS EBS.
+Implementé Longhorn como solución de almacenamiento distribuido para Kubernetes.
+
+Su función es similar al papel que desempeña AWS EBS en entornos cloud: proporcionar volúmenes persistentes desacoplados del ciclo de vida de los Pods.
 
 Cuando MySQL solicita un PVC:
 
@@ -152,28 +139,31 @@ storageClassName: longhorn
 
 Longhorn:
 
-* Crea automáticamente el volumen.
-* Replica datos entre nodos.
-* Mantiene sincronización en tiempo real.
-* Tolera caída de nodos físicos.
+* Aprovisiona automáticamente el volumen.
+* Replica los datos entre múltiples nodos.
+* Mantiene sincronización continua entre réplicas.
+* Tolera fallos físicos de servidores.
+* Reconstruye automáticamente las réplicas cuando un nodo vuelve a estar disponible.
 
 ---
 
-# 📊 Monitorización y Observabilidad
+# 📊 Observabilidad y Monitorización
 
-# 4️⃣ Kubernetes Dashboard
+## 4️⃣ Kubernetes Dashboard
 
-Desplegué el Dashboard oficial para:
+Desplegué Kubernetes Dashboard para supervisar visualmente el estado del clúster.
 
-* Supervisar Pods.
-* Ver consumo de CPU/RAM.
-* Monitorizar estado de nodos.
-* Validar failovers.
-* Gestionar workloads visualmente.
+Permite:
+
+* Supervisar Pods y Deployments.
+* Analizar consumo de CPU y memoria.
+* Monitorizar el estado de los nodos.
+* Verificar procesos de failover.
+* Gestionar workloads desde una interfaz gráfica.
 
 ---
 
-# 5️⃣ Metrics Server
+## 5️⃣ Metrics Server
 
 Para obtener métricas en tiempo real instalé Metrics Server:
 
@@ -181,7 +171,7 @@ Para obtener métricas en tiempo real instalé Metrics Server:
 kubectl apply -f metrics-server.yaml
 ```
 
-Una vez desplegado fue posible consultar el consumo real de recursos del clúster:
+Una vez desplegado fue posible consultar el consumo real del clúster:
 
 ```bash
 kubectl top nodes
@@ -191,7 +181,7 @@ kubectl top nodes
 kubectl top pods -A
 ```
 
-Metrics Server fue clave para:
+Metrics Server resultó especialmente útil para:
 
 * Analizar consumo real de CPU y memoria.
 * Diagnosticar problemas de scheduling.
@@ -203,29 +193,27 @@ Metrics Server fue clave para:
 
 # 🧠 Post-Mortem Técnico
 
-# ⚠️ Problema #1 — `Insufficient CPU`
+## ⚠️ Problema #1 — `Insufficient CPU`
 
-## 🐛 Síntoma
+### 🐛 Síntoma
 
-Al apagar `slave1`, MySQL quedaba en estado:
+Tras apagar el nodo `slave1`, MySQL permanecía en estado:
 
 ```txt
 Pending
 ```
 
-Mostrando:
+Mostrando el mensaje:
 
 ```txt
 Insufficient cpu
 ```
 
-Aunque las VMs parecían tener recursos disponibles.
+Aunque aparentemente seguían existiendo recursos disponibles en el clúster.
 
----
+### 🔍 Investigación
 
-## 🔍 Investigación
-
-Utilizando Metrics Server pude comprobar el consumo real del clúster:
+Utilizando Metrics Server pude comprobar el uso real de recursos:
 
 ```bash
 kubectl top nodes
@@ -235,11 +223,9 @@ kubectl top nodes
 kubectl top pods -A
 ```
 
-Las métricas indicaban que el uso real de CPU era relativamente bajo, por lo que el problema no estaba relacionado con falta de capacidad física.
+Las métricas indicaban que el consumo efectivo de CPU era relativamente bajo, por lo que el problema no parecía estar relacionado con falta de capacidad física.
 
----
-
-## 🔍 Causa
+### 🔍 Causa
 
 Tras revisar la configuración descubrí que existía un `LimitRange` heredado de pruebas anteriores.
 
@@ -249,7 +235,7 @@ Cada contenedor reservaba automáticamente:
 500m CPU
 ```
 
-Como Laravel utiliza un patrón Sidecar:
+Como Laravel utiliza el patrón Sidecar:
 
 * PHP-FPM
 * Nginx
@@ -260,21 +246,19 @@ La reserva efectiva por Pod era:
 1000m CPU
 ```
 
-Kubernetes calculaba además los recursos reservados por:
+A esto había que sumar las reservas realizadas por:
 
 * Calico
 * Longhorn
 * Metrics Server
 * Dashboard
-* System Pods
+* Pods del sistema
 
-Aunque el consumo real era bajo, el Scheduler bloqueaba la reubicación del Pod tras la caída de un nodo porque las reservas comprometidas superaban la capacidad disponible.
+Aunque el consumo real era bajo, Kubernetes calculaba los recursos comprometidos a partir de los requests definidos, impidiendo que el Scheduler reubicara el Pod tras la caída de un nodo.
 
----
+### ✅ Solución
 
-## ✅ Solución
-
-Eliminé el `LimitRange` y definí requests acordes al consumo real observado:
+Eliminé el `LimitRange` y ajusté los requests al consumo real observado:
 
 ```yaml
 resources:
@@ -287,36 +271,33 @@ Resultado:
 * MySQL volvió a desplegarse inmediatamente.
 * Mejor aprovechamiento de recursos.
 * Failover funcional.
-* Requests ajustados a métricas reales.
+* Requests alineados con el uso real.
 
 ---
 
-# ⚠️ Problema #2 — Bloqueo del Volumen (Split-Brain)
+## ⚠️ Problema #2 — Bloqueo del Volumen (Split-Brain)
 
-## 🐛 Síntoma
+### 🐛 Síntoma
 
-Al apagar violentamente la VM de almacenamiento:
+Al apagar bruscamente la máquina virtual que alojaba una de las réplicas de almacenamiento:
 
-* El PVC quedó congelado durante varios minutos.
+* El PVC quedó bloqueado durante varios minutos.
 * MySQL dejó de responder temporalmente.
-* El volumen no se liberaba del nodo apagado
+* El volumen permanecía asociado al nodo caído.
 
----
+### 🔍 Causa: Protección frente a Split-Brain
 
-## 🔍 Causa
+Longhorn incorpora mecanismos de protección para evitar escenarios de split-brain.
 
-Longhorn protege automáticamente contra escenarios de:
+Cuando un nodo desaparece inesperadamente, Kubernetes no puede determinar inmediatamente si la caída es permanente o si el nodo volverá a estar disponible en unos minutos.
 
-# Split-Brain
+Por este motivo Longhorn bloquea temporalmente determinadas operaciones para evitar que varias réplicas potencialmente inconsistentes acepten escrituras simultáneamente, protegiendo así la integridad de los datos.
 
-Longhorn evita que múltiples réplicas inconsistentes acepten escrituras simultáneamente tras una pérdida abrupta de conectividad. Cuando un nodo se apaga de forma inesperada, el volumen queda bloqueado temporalmente porque Kubernetes no puede determinar si la caída es permanente o si el nodo volverá a estar disponible en pocos minutos. Este mecanismo evita posibles corrupciones de datos derivadas de escrituras concurrentes.
----
+### ✅ Solución
 
-## ✅ Solución
+Marqué el nodo como fuera de servicio utilizando:
 
-Indique al nodo como fuera de servicio y recreo el pod en otro nodo satisfactoriamente:
-
-```bash`
+```bash
 kubectl taint nodes slave3-ubuntu-kubernetes node.kubernetes.io/out-of-service=nodeshutdown:NoExecute
 ```
 
@@ -324,35 +305,40 @@ Resultado:
 
 * Failover inferior a 30 segundos.
 * Sin pérdida de datos.
-* Recuperación automática al reincorporar el nodo.
+* Recuperación automática del servicio.
+* Reconstrucción posterior de las réplicas al reincorporar el nodo.
 
 ---
 
 # 📸 Evidencias del Clúster
 
-# ✅ Infraestructura Estable
+## ✅ Infraestructura Estable
 
-## Kubernetes Dashboard
+### Kubernetes Dashboard
 
-Visualización del estado saludable de nodos y workloads.
+Visualización del estado general del clúster y sus workloads.
 
 <img src="img/dashboard_kubernetes.png" alt="dashboard kubernetes" width="100%">
+
 <img src="img/dashboard_workloads1.png" alt="dashboard workloads" width="100%">
+
 <img src="img/dashboard_workloads2.png" alt="dashboard workloads" width="100%">
 
 ---
 
-## Longhorn UI — Estado Healthy
+### Longhorn UI — Estado Healthy
 
 Volumen de MySQL correctamente replicado entre nodos.
 
 <img src="img/dashboard_longhorn.png" alt="dashboard longhorn" width="100%">
+
 <img src="img/dashboard_longhorn_volume_nodess.png" alt="dashboard volume nodes" width="100%">
+
 <img src="img/dashboard_longhorn_nodes.png" alt="dashboard longhorn nodes" width="100%">
 
 ---
 
-## Laravel funcionando
+### Laravel funcionando
 
 Aplicación desplegada mediante Ingress Controller.
 
@@ -360,37 +346,43 @@ Aplicación desplegada mediante Ingress Controller.
 
 ---
 
-# ⚠️ Comportamiento ante Fallos
+## ⚠️ Comportamiento ante Fallos
 
-## 🔄 Migración Automática del Pod MySQL
+### 🔄 Migración Automática del Pod MySQL
 
-Failover del StatefulSet tras apagar un nodo.
+Failover del StatefulSet tras la caída de un nodo.
 
-<img src="img/pods-before-taint.png" alt="pods_before_tainted" width="100%">
-<img src="img/pods-after-tainted-node.png" alt="pods_after_tainted" width="100%">
+<img src="img/pods-before-taint.png" alt="pods before taint" width="100%">
 
----
-
-## 🟡 Longhorn en modo Degraded
-
-El sistema mantiene disponibilidad incluso durante la caída de una VM.
-
-<img src="longhorn_degraded.png" alt="longhorn_degraded" width="100%">
----
-
-## ♻️ Recuperación Automática
-
-<img src="img/pods_sync.png" alt="pods_sync" width="100%">
+<img src="img/pods-after-tainted-node.png" alt="pods after taint" width="100%">
 
 ---
 
-## ♻️ Recuperación del volumen al nodo una vez asignado como untainted 
+### 🟡 Longhorn en estado Degraded
 
-<img src="img/rebulding_volumen_after_untainted.png" alt="pods_sync" width="100%">
+El almacenamiento continúa disponible incluso durante la caída de una máquina virtual.
+
+<img src="img/longhorn_degraded.png" alt="longhorn degraded" width="100%">
 
 ---
 
-# 🚀 RoadMap
+### ♻️ Recuperación Automática
+
+Sincronización y recuperación de los Pods tras restaurar el nodo.
+
+<img src="img/pods_sync.png" alt="pods sync" width="100%">
+
+---
+
+### ♻️ Reconstrucción de Réplicas tras Retirar el Taint
+
+Proceso de reconstrucción automática del volumen una vez que el nodo vuelve a estar disponible.
+
+<img src="img/rebulding_volumen_after_untainted.png" alt="rebuilding volume" width="100%">
+
+---
+
+# 🚀 Roadmap
 
 ## 🔄 Automatización CI/CD
 
@@ -402,8 +394,8 @@ Implementar:
 Objetivos:
 
 * Build automático.
-* Push a registry privado.
-* Deploy automático en Kubernetes.
+* Push a registro privado.
+* Despliegue automático en Kubernetes.
 
 ---
 
@@ -414,7 +406,7 @@ Separar:
 * `staging`
 * `production`
 
-Utilizando Namespaces.
+Mediante Namespaces independientes.
 
 ---
 
@@ -424,21 +416,16 @@ Integrar:
 
 * ArgoCD
 
-Para gestión declarativa completa de infraestructura y aplicaciones.
+Para gestionar infraestructura y aplicaciones mediante un enfoque declarativo.
 
 ---
 
 # 🏁 Conclusión
 
-Este Home Lab me permitió replicar conceptos reales de infraestructura cloud:
+El objetivo principal de este laboratorio era comprender mejor los componentes internos de Kubernetes que normalmente quedan ocultos tras los servicios gestionados de los proveedores cloud.
 
-* Alta disponibilidad.
-* Persistencia distribuida.
-* Orquestación avanzada.
-* Seguridad desacoplada.
-* Failover resiliente.
-* Redes internas complejas.
-* Observabilidad mediante Metrics Server y Kubernetes Dashboard.
-* Diagnóstico y resolución de problemas reales de operación.
+Por ese motivo decidí construir el entorno sobre Kubernetes Bare-Metal, gestionando directamente aspectos como el networking entre Pods mediante Calico, el almacenamiento distribuido con Longhorn, la gestión de recursos del Scheduler y los mecanismos de recuperación ante fallos.
 
-Todo ejecutándose sobre hardware local y máquinas virtuales propias, reproduciendo patrones y desafíos habituales en entornos productivos basados en Kubernetes.
+Más allá del despliegue de la aplicación, el proyecto permitió analizar situaciones reales de operación, diagnosticar problemas de scheduling, comprender el comportamiento de los volúmenes distribuidos y experimentar procesos de failover similares a los que pueden encontrarse en entornos productivos.
+
+Todo ello ejecutándose sobre hardware local y máquinas virtuales propias, reproduciendo muchos de los retos habituales de una plataforma Kubernetes moderna.
