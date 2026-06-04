@@ -299,6 +299,7 @@ Al apagar violentamente la VM de almacenamiento:
 
 * El PVC quedó congelado durante varios minutos.
 * MySQL dejó de responder temporalmente.
+* El volumen no se liberaba del nodo apagado
 
 ---
 
@@ -308,25 +309,15 @@ Longhorn protege automáticamente contra escenarios de:
 
 # Split-Brain
 
-Evita que múltiples réplicas inconsistentes acepten escrituras simultáneamente tras una pérdida abrupta de conectividad.
-
+Longhorn evita que múltiples réplicas inconsistentes acepten escrituras simultáneamente tras una pérdida abrupta de conectividad. Cuando un nodo se apaga de forma inesperada, el volumen queda bloqueado temporalmente porque Kubernetes no puede determinar si la caída es permanente o si el nodo volverá a estar disponible en pocos minutos. Este mecanismo evita posibles corrupciones de datos derivadas de escrituras concurrentes.
 ---
 
 ## ✅ Solución
 
-Forcé el desalojo del nodo y la recreación inmediata del Pod:
+Indique al nodo como fuera de servicio y recreo el pod en otro nodo satisfactoriamente:
 
-```bash
-kubectl drain slave1-ubuntu-kubernetes \
-  --force \
-  --ignore-daemonsets \
-  --delete-emptydir-data
-```
-
-```bash
-kubectl delete pod mysql-0 \
-  --force \
-  --grace-period=0
+```bash`
+kubectl taint nodes slave3-ubuntu-kubernetes node.kubernetes.io/out-of-service=nodeshutdown:NoExecute
 ```
 
 Resultado:
@@ -356,8 +347,8 @@ Visualización del estado saludable de nodos y workloads.
 Volumen de MySQL correctamente replicado entre nodos.
 
 <img src="img/dashboard_longhorn.png" alt="dashboard longhorn" width="100%">
-<img src="img/dashboard_longhorn_volume_nodes.png" alt="dashboard volume nodes" width="100%">
-<img src="img/dashboard_longorn_nodes.png" alt="dashboard longhorn nodes" width="100%">
+<img src="img/dashboard_longhorn_volume_nodess.png" alt="dashboard volume nodes" width="100%">
+<img src="img/dashboard_longhorn_nodes.png" alt="dashboard longhorn nodes" width="100%">
 
 ---
 
@@ -375,17 +366,27 @@ Aplicación desplegada mediante Ingress Controller.
 
 Failover del StatefulSet tras apagar un nodo.
 
+<img src="img/pods-before-taint.png" alt="pods_before_tainted" width="100%">
+<img src="img/pods-after-tainted-node.png" alt="pods_after_tainted" width="100%">
+
 ---
 
 ## 🟡 Longhorn en modo Degraded
 
 El sistema mantiene disponibilidad incluso durante la caída de una VM.
 
+<img src="longhorn_degraded.png" alt="longhorn_degraded" width="100%">
 ---
 
 ## ♻️ Recuperación Automática
 
-Resincronización automática de réplicas tras la recuperación del nodo.
+<img src="img/pods_sync.png" alt="pods_sync" width="100%">
+
+---
+
+## ♻️ Recuperación del volumen al nodo una vez asignado como untainted 
+
+<img src="img/rebulding_volumen_after_untainted.png" alt="pods_sync" width="100%">
 
 ---
 
