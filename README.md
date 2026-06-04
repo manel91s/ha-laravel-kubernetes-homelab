@@ -227,7 +227,7 @@ Las métricas indicaban que el consumo efectivo de CPU era relativamente bajo, p
 
 ### 🔍 Causa
 
-Tras revisar la configuración descubrí que existía un `LimitRange` heredado de pruebas anteriores.
+Tras revisar la configuración descubrí que existía un LimitRange aplicado por contenedor, heredado de pruebas anteriores. Además, uno de los nodos tenía un límite efectivo de 2000m de CPU disponible para scheduling. Esto me ayudó a entender que Kubernetes no “mata” los Pods por superar la CPU, sino que el problema ocurre a nivel de planificación, el scheduler no puede reubicar el Pod si los requests ya consumen la capacidad disponible del clúster.
 
 Cada contenedor reservaba automáticamente:
 
@@ -258,12 +258,16 @@ Aunque el consumo real era bajo, Kubernetes calculaba los recursos comprometidos
 
 ### ✅ Solución
 
-Eliminé el `LimitRange` y ajusté los requests al consumo real observado:
+Eliminé el `LimitRange` y ajusté los requests al consumo real observado en cada contenedor:
 
 ```yaml
-resources:
-  requests:
-    cpu: "150m"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "400m"
+              memory: "256Mi"
 ```
 
 Resultado:
