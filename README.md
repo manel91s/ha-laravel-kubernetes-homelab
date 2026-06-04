@@ -1,4 +1,4 @@
-# 🚀 Clúster de Alta Disponibilidad — Laravel + MySQL sobre Máquinas Virtuales (Home Lab Cloud)
+# 🚀 Clúster de Alta Disponibilidad en Kubernetes Bare-Metal — Laravel + MySQL
 
 Este proyecto documenta cómo construí un entorno altamente disponible utilizando **Laravel**, **MySQL** y **Kubernetes** sobre máquinas virtuales propias, replicando conceptos y patrones habituales de infraestructuras cloud modernas.
 
